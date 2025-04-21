@@ -32,6 +32,17 @@ def fetch_proxies():
         print(f"Error al cargar los proxies: {e}")
         return []
 
+def test_proxy(proxy):
+    """Verifica si un proxy funciona realizando una solicitud de prueba."""
+    try:
+        test_url = "http://httpbin.org/ip"  # URL para probar proxies
+        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=5)
+        if response.status_code == 200:
+            return True
+    except Exception:
+        pass
+    return False
+
 def send_telegram_notification(message):
     try:
         # URL de la API de Telegram
@@ -55,43 +66,45 @@ def send_startup_notification():
     send_telegram_notification(startup_message)
 
 def check_stock(proxies):
-    try:
-        # Seleccionar un proxy aleatorio
-        proxy = random.choice(proxies)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.5",
+        "Referer": "https://www.decathlon.es/",
+        "DNT": "1",  # Do Not Track
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+    }
 
-        # Realizar la solicitud HTTP a la página del producto
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "es-ES,es;q=0.5",
-            "Referer": "https://www.decathlon.es/",
-            "DNT": "1",  # Do Not Track
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
-        }
-        response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy, "https": proxy})
-        response.raise_for_status()
+    for proxy in proxies:
+        try:
+            # Realizar la solicitud HTTP a la página del producto
+            response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy, "https": proxy}, timeout=10)
+            response.raise_for_status()
 
-        # Analizar el HTML con BeautifulSoup
-        soup = BeautifulSoup(response.text, "html.parser")
+            # Analizar el HTML con BeautifulSoup
+            soup = BeautifulSoup(response.text, "html.parser")
 
-        # Buscar el selector de tallas
-        size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
-        if not size_selector:
-            print("No se encontró el selector de tallas.")
-            return False
+            # Buscar el selector de tallas
+            size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
+            if not size_selector:
+                print("No se encontró el selector de tallas.")
+                continue
 
-        # Verificar si alguna talla tiene stock
-        in_stock = any(
-            "sku-selector__stock--inStock" in str(item)
-            for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
-        )
+            # Verificar si alguna talla tiene stock
+            in_stock = any(
+                "sku-selector__stock--inStock" in str(item)
+                for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
+            )
 
-        return in_stock
+            return in_stock
 
-    except Exception as e:
-        print(f"Error al verificar el stock (proxy: {proxy}): {e}")
-        return False
+        except Exception as e:
+            print(f"Error al verificar el stock (proxy: {proxy}): {e}")
+            continue
+
+    print("Todos los proxies fallaron.")
+    return False
 
 def main():
     # Cargar proxies desde la API
@@ -100,17 +113,36 @@ def main():
         print("No se pudieron cargar proxies. Terminando el script.")
         return
 
+    # Filtrar proxies funcionales
+    print("Probando proxies...")
+    working_proxies = [proxy for proxy in proxies if test_proxy(proxy)]
+    if not working_proxies:
+        print("No se encontraron proxies funcionales. Terminando el script.")
+        return
+    print(f"Proxies funcionales encontrados: {len(working_proxies)}")
+
     # Enviar mensaje de inicio
     send_startup_notification()
 
+    # Variables para controlar el tiempo entre mensajes de "sin stock"
+    last_out_of_stock_notification_time = 0
+    out_of_stock_interval = 300  # Intervalo de 5 minutos en segundos
+
     while True:
         print("Verificando stock...")
-        if check_stock(proxies):
+        if check_stock(working_proxies):
             print("¡Producto disponible!")
             message = f"¡El producto está disponible!\n\nVisita: {PRODUCT_URL}"
             send_telegram_notification(message)
+            last_out_of_stock_notification_time = 0  # Reiniciar el contador
         else:
             print("Sin stock.")
+            current_time = time.time()
+            # Verificar si han pasado 5 minutos desde la última notificación de "sin stock"
+            if current_time - last_out_of_stock_notification_time >= out_of_stock_interval:
+                message = "⚠️ Aún no hay stock del producto. Seguimos verificando..."
+                send_telegram_notification(message)
+                last_out_of_stock_notification_time = current_time  # Actualizar el tiempo
 
         # Esperar 5 minutos antes de volver a verificar
         time.sleep(300)
