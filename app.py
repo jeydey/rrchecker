@@ -38,10 +38,14 @@ def test_proxy(proxy):
             ip_info = response.json()
             ip_address = ip_info.get("query", "Desconocido")
             country = ip_info.get("country", "Desconocido")
-            logging.info(f"✅ Proxy funcional: IP={ip_address}, País={country}")
+            message = f"✅ Proxy funcional: IP={ip_address}, País={country}"
+            logging.info(message)
+            send_telegram_notification(message)
             return True
     except Exception as e:
-        logging.error(f"❌ Proxy fallido: {proxy}. Error: {str(e)}")
+        message = f"❌ Proxy fallido: {proxy}. Error: {str(e)}"
+        logging.error(message)
+        send_telegram_notification(message)
     return False
 
 def fetch_proxies():
@@ -51,7 +55,9 @@ def fetch_proxies():
         logging.info("🔍 Obteniendo proxy desde Geonode...")
         return [proxy]
     except Exception as e:
-        logging.error(f"❌ Error al obtener proxies desde Geonode: {str(e)}")
+        message = f"❌ Error al obtener proxies desde Geonode: {str(e)}"
+        logging.error(message)
+        send_telegram_notification(message)
         return []
 
 def check_stock(proxies):
@@ -74,7 +80,9 @@ def check_stock(proxies):
             soup = BeautifulSoup(response.text, "html.parser")
             size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
             if not size_selector:
-                logging.warning(f"⚠️ No se encontró el selector de tallas (Proxy: {proxy})")
+                message = f"⚠️ No se encontró el selector de tallas (Proxy: {proxy})"
+                logging.warning(message)
+                send_telegram_notification(message)
                 continue
 
             in_stock = any(
@@ -83,17 +91,24 @@ def check_stock(proxies):
             )
 
             if in_stock:
-                logging.info(f"🎉 ¡Producto disponible! (Proxy: {proxy})")
-                send_telegram_notification("🎉 ¡Producto disponible!")
+                message = f"🎉 ¡Producto disponible! (Proxy: {proxy})"
+                logging.info(message)
+                send_telegram_notification(message)
                 return True
             else:
-                logging.info(f"❌ Sin stock (Proxy: {proxy})")
+                message = f"❌ Sin stock (Proxy: {proxy})"
+                logging.info(message)
+                send_telegram_notification(message)
 
         except requests.exceptions.RequestException as e:
-            logging.error(f"❌ Error al verificar el stock (Proxy: {proxy}): {str(e)}")
+            message = f"❌ Error al verificar el stock (Proxy: {proxy}): {str(e)}"
+            logging.error(message)
+            send_telegram_notification(message)
             continue
 
-    logging.error("❌ Todos los proxies fallaron.")
+    message = "❌ Todos los proxies fallaron."
+    logging.error(message)
+    send_telegram_notification(message)
     return False
 
 def main():
