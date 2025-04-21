@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import time
-import random
 
 # Configuración de la URL del producto
 PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
@@ -10,42 +9,14 @@ PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azu
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
 
-# URL de la API de Geonode para obtener proxies
-PROXY_API_URL = "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc"
-
-def fetch_proxies():
-    try:
-        # Obtener la lista de proxies desde la API de Geonode
-        response = requests.get(PROXY_API_URL)
-        response.raise_for_status()
-        data = response.json()
-
-        # Extraer los proxies de la respuesta JSON
-        proxies = [
-            f"http://{proxy['ip']}:{proxy['port']}"
-            for proxy in data.get("data", [])
-            if proxy["protocols"]  # Filtrar proxies con protocolos válidos
-        ]
-        return proxies
-
-    except Exception as e:
-        print(f"Error al cargar los proxies: {e}")
-        return []
-
-def test_proxy(proxy):
-    """Verifica si un proxy funciona realizando una solicitud de prueba."""
-    try:
-        test_url = "http://httpbin.org/ip"  # URL para probar proxies
-        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=5)
-        if response.status_code == 200:
-            return True
-    except Exception:
-        pass
-    return False
+# Configuración de Geonode
+GEONODE_USERNAME = "geonode_IDgCnOwpKG-type-residential-country-es"
+GEONODE_PASSWORD = "ab0b0953-d053-4a24-835e-1e5feb82a217"
+GEONODE_DNS = "92.204.164.15:9000"
 
 def send_telegram_notification(message):
+    """Envía un mensaje a Telegram."""
     try:
-        # URL de la API de Telegram
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
@@ -56,14 +27,37 @@ def send_telegram_notification(message):
             print("Notificación enviada a Telegram.")
         else:
             print(f"Error al enviar la notificación a Telegram: {response.text}")
-
     except Exception as e:
         print(f"Error al enviar la notificación a Telegram: {e}")
 
-def send_startup_notification():
-    # Mensaje de inicio
-    startup_message = "✅ El script está operativo y verificando stock cada 5 minutos."
-    send_telegram_notification(startup_message)
+def test_proxy(proxy):
+    """Verifica si un proxy funciona realizando una solicitud de prueba."""
+    try:
+        test_url = "http://ip-api.com/json"  # URL para probar proxies
+        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=5)
+        if response.status_code == 200:
+            ip_info = response.json()
+            ip_address = ip_info.get("query", "Desconocido")
+            country = ip_info.get("country", "Desconocido")
+            notification = f"✅ Proxy funcional: IP={ip_address}, País={country}"
+            send_telegram_notification(notification)
+            return True
+    except Exception as e:
+        notification = f"❌ Proxy fallido: {proxy}. Error: {str(e)}"
+        send_telegram_notification(notification)
+    return False
+
+def fetch_proxies():
+    """Obtiene proxies desde Geonode."""
+    try:
+        proxy = f"http://{GEONODE_USERNAME}:{GEONODE_PASSWORD}@{GEONODE_DNS}"
+        notification = f"🔍 Obteniendo proxy desde Geonode..."
+        send_telegram_notification(notification)
+        return [proxy]  # Devuelve el proxy configurado
+    except Exception as e:
+        notification = f"❌ Error al obtener proxies desde Geonode: {str(e)}"
+        send_telegram_notification(notification)
+        return []
 
 def check_stock(proxies):
     headers = {
@@ -78,6 +72,9 @@ def check_stock(proxies):
 
     for proxy in proxies:
         try:
+            notification = f"🔄 Verificando stock con proxy: {proxy}"
+            send_telegram_notification(notification)
+
             # Realizar la solicitud HTTP a la página del producto
             response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy, "https": proxy}, timeout=10)
             response.raise_for_status()
@@ -88,7 +85,8 @@ def check_stock(proxies):
             # Buscar el selector de tallas
             size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
             if not size_selector:
-                print("No se encontró el selector de tallas.")
+                notification = f"⚠️ No se encontró el selector de tallas (Proxy: {proxy})"
+                send_telegram_notification(notification)
                 continue
 
             # Verificar si alguna talla tiene stock
@@ -97,36 +95,44 @@ def check_stock(proxies):
                 for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
             )
 
-            return in_stock
+            if in_stock:
+                notification = f"🎉 ¡Producto disponible! (Proxy: {proxy})"
+                send_telegram_notification(notification)
+                return True
+            else:
+                notification = f"❌ Sin stock (Proxy: {proxy})"
+                send_telegram_notification(notification)
 
         except Exception as e:
-            print(f"Error al verificar el stock (proxy: {proxy}): {e}")
+            notification = f"❌ Error al verificar el stock (Proxy: {proxy}): {str(e)}"
+            send_telegram_notification(notification)
             continue
 
-    print("Todos los proxies fallaron.")
+    notification = "❌ Todos los proxies fallaron."
+    send_telegram_notification(notification)
     return False
 
 def main():
     # Enviar mensaje de inicio INMEDIATAMENTE
-    send_startup_notification()
+    send_telegram_notification("✅ El script está operativo y verificando stock cada 5 minutos.")
 
-    # Cargar proxies desde la API
+    # Cargar proxies desde Geonode
     proxies = fetch_proxies()
     if not proxies:
-        error_message = "❌ No se pudieron cargar proxies. Intentando nuevamente en 5 minutos..."
-        print(error_message)
-        send_telegram_notification(error_message)
+        send_telegram_notification("❌ No se pudieron cargar proxies. Intentando nuevamente en 5 minutos...")
         return
 
     # Filtrar proxies funcionales
-    print("Probando proxies...")
-    working_proxies = [proxy for proxy in proxies if test_proxy(proxy)]
+    working_proxies = []
+    for proxy in proxies:
+        if test_proxy(proxy):
+            working_proxies.append(proxy)
+
     if not working_proxies:
-        error_message = "❌ No se encontraron proxies funcionales. Intentando nuevamente en 5 minutos..."
-        print(error_message)
-        send_telegram_notification(error_message)
+        send_telegram_notification("❌ No se encontraron proxies funcionales. Intentando nuevamente en 5 minutos...")
         return
-    print(f"Proxies funcionales encontrados: {len(working_proxies)}")
+
+    send_telegram_notification(f"✅ Proxies funcionales encontrados: {len(working_proxies)}")
 
     # Variables para controlar el tiempo entre mensajes de "sin stock"
     last_out_of_stock_notification_time = 0
@@ -136,8 +142,6 @@ def main():
         print("Verificando stock...")
         if check_stock(working_proxies):
             print("¡Producto disponible!")
-            message = f"¡El producto está disponible!\n\nVisita: {PRODUCT_URL}"
-            send_telegram_notification(message)
             last_out_of_stock_notification_time = 0  # Reiniciar el contador
         else:
             print("Sin stock.")
