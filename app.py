@@ -107,22 +107,26 @@ def check_stock(proxies):
     return False
 
 def main():
+    # Enviar mensaje de inicio INMEDIATAMENTE
+    send_startup_notification()
+
     # Cargar proxies desde la API
     proxies = fetch_proxies()
     if not proxies:
-        print("No se pudieron cargar proxies. Terminando el script.")
+        error_message = "❌ No se pudieron cargar proxies. Intentando nuevamente en 5 minutos..."
+        print(error_message)
+        send_telegram_notification(error_message)
         return
 
     # Filtrar proxies funcionales
     print("Probando proxies...")
     working_proxies = [proxy for proxy in proxies if test_proxy(proxy)]
     if not working_proxies:
-        print("No se encontraron proxies funcionales. Terminando el script.")
+        error_message = "❌ No se encontraron proxies funcionales. Intentando nuevamente en 5 minutos..."
+        print(error_message)
+        send_telegram_notification(error_message)
         return
     print(f"Proxies funcionales encontrados: {len(working_proxies)}")
-
-    # Enviar mensaje de inicio
-    send_startup_notification()
 
     # Variables para controlar el tiempo entre mensajes de "sin stock"
     last_out_of_stock_notification_time = 0
