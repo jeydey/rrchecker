@@ -10,12 +10,27 @@ PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azu
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
 
-# Lista de proxies (reemplaza estos con proxies válidos)
-PROXIES = [
-    "http://proxy1:port",
-    "http://proxy2:port",
-    "http://proxy3:port"
-]
+# URL de la API de Geonode para obtener proxies
+PROXY_API_URL = "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc"
+
+def fetch_proxies():
+    try:
+        # Obtener la lista de proxies desde la API de Geonode
+        response = requests.get(PROXY_API_URL)
+        response.raise_for_status()
+        data = response.json()
+
+        # Extraer los proxies de la respuesta JSON
+        proxies = [
+            f"http://{proxy['ip']}:{proxy['port']}"
+            for proxy in data.get("data", [])
+            if proxy["protocols"]  # Filtrar proxies con protocolos válidos
+        ]
+        return proxies
+
+    except Exception as e:
+        print(f"Error al cargar los proxies: {e}")
+        return []
 
 def send_telegram_notification(message):
     try:
@@ -39,10 +54,10 @@ def send_startup_notification():
     startup_message = "✅ El script está operativo y verificando stock cada 5 minutos."
     send_telegram_notification(startup_message)
 
-def check_stock():
+def check_stock(proxies):
     try:
         # Seleccionar un proxy aleatorio
-        proxy = random.choice(PROXIES)
+        proxy = random.choice(proxies)
 
         # Realizar la solicitud HTTP a la página del producto
         headers = {
@@ -75,16 +90,22 @@ def check_stock():
         return in_stock
 
     except Exception as e:
-        print(f"Error al verificar el stock: {e}")
+        print(f"Error al verificar el stock (proxy: {proxy}): {e}")
         return False
 
 def main():
+    # Cargar proxies desde la API
+    proxies = fetch_proxies()
+    if not proxies:
+        print("No se pudieron cargar proxies. Terminando el script.")
+        return
+
     # Enviar mensaje de inicio
     send_startup_notification()
 
     while True:
         print("Verificando stock...")
-        if check_stock():
+        if check_stock(proxies):
             print("¡Producto disponible!")
             message = f"¡El producto está disponible!\n\nVisita: {PRODUCT_URL}"
             send_telegram_notification(message)
