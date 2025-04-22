@@ -5,7 +5,7 @@ import random
 import time
 
 # Configuración inicial
-PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
+PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-de-montana-doble-suspension-aluminio-xc-race-700-s-azul/_/R-p-330067?mc=8616938"
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
 CHECK_INTERVAL = 30  # Intervalo de verificación en segundos
