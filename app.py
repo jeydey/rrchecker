@@ -8,18 +8,19 @@ PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azu
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
 
-CHECK_INTERVAL = 300
-STOCK_NOTIFICATION_INTERVAL = 300
+CHECK_INTERVAL = 300  # 5 minutos
+STOCK_NOTIFICATION_INTERVAL = 300  # 5 minutos
 
 # Credenciales GeoNode
 GEONODE_USERNAME = "geonode_IDgCnOwpKG-type-residential"
 GEONODE_PASSWORD = "ab0b0953-d053-4a24-835e-1e5feb82a217"
-GEONODE_API_URL = "https://proxylist.geonode.com/api/proxy-list?limit=1&page=1&sort_by=lastChecked&sort_type=desc&protocols=http"
+GEONODE_API_URL = "https://proxylist.geonode.com/api/proxy-list"
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def send_telegram_notification(message):
+    """Envía una notificación a Telegram"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
@@ -28,8 +29,20 @@ def send_telegram_notification(message):
         logging.error(f"Error al enviar notificación: {e}")
 
 def get_proxy_from_geonode():
+    """Obtiene un proxy válido de GeoNode con protocolos HTTP y puertos válidos"""
     try:
-        response = requests.get(GEONODE_API_URL, timeout=10)
+        params = {
+            "limit": 1,
+            "page": 1,
+            "sort_by": "lastChecked",
+            "sort_type": "desc",
+            "protocols": "http",
+            "anonymityLevel": "elite",
+            "speed": "fast",
+            "port": "80,8080,8000,3128,8888,9000",  # Filtra puertos típicos HTTP
+            "country": "ES",  # Opcional: limita a proxies en España
+        }
+        response = requests.get(GEONODE_API_URL, params=params, timeout=10)
         data = response.json()
         proxy_data = data["data"][0]
         ip = proxy_data["ip"]
@@ -41,6 +54,7 @@ def get_proxy_from_geonode():
         return None
 
 def test_proxy(proxy_url):
+    """Verifica si el proxy preconfigurado funciona realizando una solicitud de prueba"""
     try:
         test_url = "http://ip-api.com/json"
         response = requests.get(test_url, proxies={"http": proxy_url, "https": proxy_url}, timeout=15)
@@ -55,6 +69,7 @@ def test_proxy(proxy_url):
     return False
 
 def check_stock(proxy_url):
+    """Verifica el stock del producto utilizando el proxy preconfigurado"""
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Accept": "text/html",
@@ -83,6 +98,7 @@ def check_stock(proxy_url):
         return False
 
 def main():
+    """Función principal del script"""
     send_telegram_notification("✅ Script operativo con proxies dinámicos de GeoNode.")
     last_out_of_stock_notification_time = 0
 
