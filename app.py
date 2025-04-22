@@ -1,19 +1,26 @@
 import requests
 from bs4 import BeautifulSoup
-import logging
-import random
 import time
+import logging
 
-# Configuración inicial
-PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-cross-country-race-700-gris-cuadro-aluminio/_/R-p-337291?mc=8731669"
+# Configuración de producto
+PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-cross-country-race-700-gris-cuadro-aluminio/_/R-p-337291"
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
-CHECK_INTERVAL = 30  # Intervalo de verificación en segundos
-STOCK_NOTIFICATION_INTERVAL = 300  # Intervalo mínimo entre notificaciones de "sin stock"
-MAX_RETRIES = 3  # Máximo de reintentos
+
+# Configuración de ScrapeOps
+SCRAPEOPS_API_KEY = '24f71537-bc7e-4c74-a75b-76e910aa1ab5'
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# User Agents para rotar
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+]
 
 def send_telegram_notification(message):
     """Envía un mensaje a Telegram."""
@@ -28,71 +35,65 @@ def send_telegram_notification(message):
     except Exception as e:
         logging.error(f"Error al enviar la notificación a Telegram: {e}")
 
-def fetch_page_using_scrapeops():
-    """Obtiene la página de producto usando ScrapeOps."""
-    scrapeops_api_key = "24f71537-bc7e-4c74-a75b-76e910aa1ab5"
+def check_stock():
+    """Verifica el stock del producto usando ScrapeOps."""
     try:
         response = requests.get(
             url='https://proxy.scrapeops.io/v1/',
             params={
-                'api_key': scrapeops_api_key,
+                'api_key': SCRAPEOPS_API_KEY,
                 'url': PRODUCT_URL,
-                'render_js': 'true',  # Habilitar ejecución de JavaScript
-                'residential': 'true',  # Usar proxies residenciales
-                'country': 'us',  # Proxies desde EE.UU.
-            },
-        )
-        response.raise_for_status()  # Verifica si hubo un error en la solicitud
-        return response.content
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error al obtener la página usando ScrapeOps: {e}")
-        send_telegram_notification(f"❌ Error al obtener la página usando ScrapeOps: {e}")
-        return None
-
-def check_stock():
-    """Verifica el stock de un producto usando ScrapeOps."""
-    logging.info("🔄 Verificando stock...")
-    page_content = fetch_page_using_scrapeops()
-
-    if page_content:
-        soup = BeautifulSoup(page_content, "html.parser")
-        size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
-        
-        if not size_selector:
-            message = "⚠️ No se encontró el selector de tallas."
-            logging.warning(message)
-            send_telegram_notification(message)
-            return False
-        
-        # Verifica si hay algún tamaño en stock
-        in_stock = any(
-            "sku-selector__stock--inStock" in str(item)
-            for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
+                'render_js': 'true',
+                'residential': 'true',
+                'country': 'us',
+            }
         )
 
-        if in_stock:
-            message = "🎉 ¡Producto disponible!"
-            logging.info(message)
-            send_telegram_notification(message)
-            return True
+        if response.status_code == 200:
+            logging.info("Solicitud exitosa, procesando datos...")
+            soup = BeautifulSoup(response.content, "html.parser")
+            size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
+            if not size_selector:
+                message = f"⚠️ No se encontró el selector de tallas para el producto."
+                logging.warning(message)
+                send_telegram_notification(message)
+                return False
+
+            in_stock = any(
+                "sku-selector__stock--inStock" in str(item)
+                for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
+            )
+
+            if in_stock:
+                message = "🎉 ¡Producto disponible!"
+                logging.info(message)
+                send_telegram_notification(message)
+                return True
+            else:
+                message = "❌ Sin stock"
+                logging.info(message)
+                send_telegram_notification(message)
+                return False
         else:
-            message = "❌ Sin stock"
-            logging.info(message)
-            send_telegram_notification(message)
+            logging.error(f"Error al obtener la página: {response.status_code}")
+            send_telegram_notification(f"❌ Error al obtener la página: {response.status_code}")
             return False
-    return False
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error en la solicitud: {e}")
+        send_telegram_notification(f"❌ Error al verificar el stock: {e}")
+        return False
 
 def main():
     send_telegram_notification("✅ El script está operativo y verificando stock cada 30 segundos.")
-    
     while True:
+        logging.info("Verificando stock...")
         if check_stock():
             logging.info("¡Producto disponible!")
         else:
-            current_time = time.time()
-            logging.info("Producto no disponible, verificando nuevamente.")
-        
-        time.sleep(CHECK_INTERVAL)
+            logging.info("Producto no disponible. Seguimos verificando...")
+
+        time.sleep(30)  # Intervalo de verificación
 
 if __name__ == "__main__":
     main()
