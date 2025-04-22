@@ -3,24 +3,23 @@ from bs4 import BeautifulSoup
 import logging
 import random
 import time
+from datetime import datetime
 
 # Configuración
 PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
-CHECK_INTERVAL = 600  # Verificación de stock cada 10 minutos
-HEARTBEAT_INTERVAL = 300  # Mensaje de estado cada 5 minutos
-STOCK_NOTIFICATION_INTERVAL = 600  # Notificación "sin stock" cada 10 minutos
+STOCK_CHECK_INTERVAL = 600  # 10 minutos
+SUMMARY_INTERVAL = 1800  # 30 minutos
 
-# ScrapeOps
 SCRAPEOPS_API_KEY = "24f71537-bc7e-4c74-a75b-76e910aa1ab5"
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Tiempos para control de notificaciones
-last_heartbeat = 0
-last_stock_notification = 0
+# Almacenar comprobaciones
+stock_checks = []
+last_summary_time = time.time()
 
 def send_telegram_notification(message):
     try:
@@ -35,7 +34,6 @@ def send_telegram_notification(message):
         logging.error(f"Excepción al enviar notificación a Telegram: {e}")
 
 def get_random_headers():
-    """Obtiene un header aleatorio de ScrapeOps."""
     try:
         response = requests.get(
             url='https://headers.scrapeops.io/v1/browser-headers',
@@ -49,12 +47,10 @@ def get_random_headers():
         headers_list = response.json().get("result", [])
         if headers_list:
             return random.choice(headers_list)
-        else:
-            logging.warning("No se recibieron headers de ScrapeOps.")
     except Exception as e:
         logging.error(f"Error al obtener headers de ScrapeOps: {e}")
     
-    return {"User-Agent": "Mozilla/5.0"}  # Fallback básico
+    return {"User-Agent": "Mozilla/5.0"}  # Fallback
 
 def fetch_page_using_scrapeops():
     headers = get_random_headers()
@@ -75,60 +71,64 @@ def fetch_page_using_scrapeops():
         return response.content
     except requests.exceptions.RequestException as e:
         logging.error(f"Error al obtener página usando ScrapeOps: {e}")
-        send_telegram_notification(f"❌ Error al obtener la página usando ScrapeOps: {e}")
         return None
 
 def check_stock():
     logging.info("🔍 Verificando stock...")
     page_content = fetch_page_using_scrapeops()
+    timestamp = datetime.now().strftime("%H:%M:%S")
 
     if page_content:
         soup = BeautifulSoup(page_content, "html.parser")
         size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
 
         if not size_selector:
-            msg = "⚠️ No se encontró el selector de tallas."
+            msg = f"⚠️ [{timestamp}] No se encontró el selector de tallas."
             logging.warning(msg)
-            send_telegram_notification(msg)
-            return None
-
+            return (timestamp, "⚠️ Error al analizar HTML")
+        
         in_stock = any(
             "sku-selector__stock--inStock" in str(item)
             for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
         )
 
         if in_stock:
-            msg = "🎉 ¡Producto disponible!"
+            msg = f"🎉 ¡[{timestamp}] Producto disponible!"
             logging.info(msg)
             send_telegram_notification(msg)
-            return True
+            return (timestamp, "✅ CON STOCK")
         else:
-            logging.info("❌ Producto sin stock.")
-            return False
-    return None
+            logging.info(f"❌ [{timestamp}] Producto sin stock.")
+            return (timestamp, "❌ Sin stock")
+
+    return (timestamp, "⚠️ Error al obtener página")
+
+def send_summary():
+    if not stock_checks:
+        return
+    summary_lines = ["📝 *Resumen de comprobaciones* (últimos 30 min):"]
+    for time_checked, result in stock_checks:
+        summary_lines.append(f"- {time_checked}: {result}")
+    
+    summary_message = "\n".join(summary_lines)
+    send_telegram_notification(summary_message)
+    stock_checks.clear()
 
 def main():
-    global last_heartbeat, last_stock_notification
-    send_telegram_notification("✅ El script está operativo.")
-
+    global last_summary_time
+    send_telegram_notification("✅ El script ha iniciado correctamente.")
+    
     while True:
+        check_result = check_stock()
+        if check_result:
+            stock_checks.append(check_result)
+
         now = time.time()
+        if now - last_summary_time >= SUMMARY_INTERVAL:
+            send_summary()
+            last_summary_time = now
 
-        # Mensaje de funcionamiento cada 5 minutos
-        if now - last_heartbeat >= HEARTBEAT_INTERVAL:
-            send_telegram_notification("💤 Script funcionando. Sin novedades.")
-            last_heartbeat = now
-
-        # Comprobar stock cada 10 minutos
-        if now - last_stock_notification >= CHECK_INTERVAL:
-            result = check_stock()
-            if result is False and now - last_stock_notification >= STOCK_NOTIFICATION_INTERVAL:
-                send_telegram_notification("❌ Producto aún sin stock.")
-                last_stock_notification = now
-            elif result is True:
-                last_stock_notification = now  # Si hay stock, reiniciamos contador
-
-        time.sleep(60)  # Verificación cada minuto
+        time.sleep(STOCK_CHECK_INTERVAL)
 
 if __name__ == "__main__":
     main()
