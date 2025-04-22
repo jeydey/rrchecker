@@ -36,7 +36,7 @@ def test_proxy(proxy):
     """Verifica si el proxy preconfigurado funciona realizando una solicitud de prueba."""
     try:
         test_url = "http://ip-api.com/json"
-        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=5)
+        response = requests.get(test_url, proxies={"http": proxy}, timeout=15)  # Aumentado el timeout
         if response.status_code == 200:
             ip_info = response.json()
             ip_address = ip_info.get("query", "Desconocido")
@@ -65,7 +65,7 @@ def check_stock(proxy):
 
     try:
         logging.info(f"🔄 Verificando stock con proxy: {proxy}")
-        response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy, "https": proxy}, timeout=10)
+        response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy}, timeout=15)  # Aumentado el timeout
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
