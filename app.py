@@ -10,8 +10,8 @@ TELEGRAM_CHAT_ID = "871212552"
 GEONODE_USERNAME = "geonode_IDgCnOwpKG-type-residential-country-es"
 GEONODE_PASSWORD = "ab0b0953-d053-4a24-835e-1e5feb82a217"
 GEONODE_DNS = "92.204.164.15:9000"
-CHECK_INTERVAL = 300  # Intervalo de verificación en segundos (5 minutos)
-STOCK_NOTIFICATION_INTERVAL = 300  # Intervalo mínimo entre notificaciones de "sin stock"
+CHECK_INTERVAL = 30  # Intervalo de verificación en segundos (5 minutos)
+STOCK_NOTIFICATION_INTERVAL = 60  # Intervalo mínimo entre notificaciones de "sin stock"
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -33,7 +33,7 @@ def test_proxy(proxy):
     """Verifica si un proxy funciona realizando una solicitud de prueba."""
     try:
         test_url = "http://ip-api.com/json"
-        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=5)
+        response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=30)
         if response.status_code == 200:
             ip_info = response.json()
             ip_address = ip_info.get("query", "Desconocido")
