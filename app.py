@@ -58,7 +58,7 @@ def check_stock():
 
 # Función principal
 def main():
-    send_telegram_notification("✅ El script está operativo y verificando stock cada 10 minutos.")
+    send_telegram_notification("✅ El checker ya esta en marcha loco, para que te fundas la tarjeta, prepara 6500euros.")
     
     last_stock_check_time = 0
     last_telegram_message_time = 0
@@ -70,7 +70,7 @@ def main():
         if current_time - last_stock_check_time >= 600:  # 600 segundos = 10 minutos
             logging.info("Comprobando stock del producto...")
             if check_stock():
-                send_telegram_notification("🎉 ¡Producto disponible!")
+                send_telegram_notification(f"🎉 ¡Producto disponible! Consulta aquí: {PRODUCT_URL}")
             else:
                 send_telegram_notification("❌ Falló la comprobación del stock. Intentando nuevamente en 10 minutos.")
             last_stock_check_time = current_time
