@@ -73,29 +73,40 @@ def fetch_proxies():
         send_telegram_notification(message)
         return []
 
+# Reemplaza la función check_stock con esta versión mejorada
 def check_stock(proxies):
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
+    headers_base = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "es-ES,es;q=0.5",
+        "Accept-Language": "es-ES,es;q=0.9",
         "Referer": "https://www.decathlon.es/",
         "DNT": "1",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "no-cache",
     }
 
+    max_failures = 3
+    proxy_failures = {proxy: 0 for proxy in proxies}
+
     for proxy in proxies:
+        if proxy_failures[proxy] >= max_failures:
+            logging.warning(f"⚠️ Proxy descartado temporalmente por múltiples fallos: {proxy}")
+            continue
+
         try:
+            headers = headers_base.copy()
+            headers["User-Agent"] = random.choice(USER_AGENTS)
+
             logging.info(f"🔄 Verificando stock con proxy: {proxy}")
             response = requests.get(PRODUCT_URL, headers=headers, proxies={"http": proxy, "https": proxy}, timeout=10)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, "html.parser")
             size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
+
             if not size_selector:
                 message = f"⚠️ No se encontró el selector de tallas (Proxy: {proxy})"
                 logging.warning(message)
-                send_telegram_notification(message)
                 continue
 
             in_stock = any(
@@ -105,23 +116,22 @@ def check_stock(proxies):
 
             if in_stock:
                 message = f"🎉 ¡Producto disponible! (Proxy: {proxy})"
-                logging.info(message)
                 send_telegram_notification(message)
                 return True
             else:
-                message = f"❌ Sin stock (Proxy: {proxy})"
-                logging.info(message)
-                send_telegram_notification(message)
+                logging.info(f"❌ Sin stock (Proxy: {proxy})")
 
-        except requests.exceptions.RequestException as e:
-            message = f"❌ Error al verificar el stock (Proxy: {proxy}): {str(e)}"
-            logging.error(message)
-            send_telegram_notification(message)
-            continue
+        except requests.exceptions.HTTPError as e:
+            proxy_failures[proxy] += 1
+            if e.response.status_code == 403:
+                logging.warning(f"🔒 Acceso denegado (403) con proxy: {proxy}")
+            else:
+                logging.error(f"❌ Error HTTP (Proxy: {proxy}): {e}")
+        except Exception as e:
+            proxy_failures[proxy] += 1
+            logging.error(f"❌ Error general al verificar stock (Proxy: {proxy}): {e}")
 
-    message = "❌ Todos los proxies fallaron."
-    logging.error(message)
-    send_telegram_notification(message)
+    logging.error("❌ Todos los proxies fallaron.")
     return False
 
 def main():
