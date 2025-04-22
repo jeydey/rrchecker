@@ -13,7 +13,7 @@ STOCK_NOTIFICATION_INTERVAL = 300
 
 # Configuración de ProxyLite
 PROXY_CONFIG = {
-    'proxyUser': 'pl-decath940',
+    'proxyUser': 'pl-decath940_area-ES',
     'proxyPass': '110892',
     'proxyHost': 'gate-eu.proxylite.com',
     'proxyPort': '9595'
