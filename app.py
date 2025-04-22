@@ -41,11 +41,13 @@ def check_stock():
             },
         )
 
-        # Procesamos el contenido para verificar el stock
+        # Depurar el contenido para verificar qué se está extrayendo
         if response.status_code == 200:
             content = response.content.decode('utf-8')
-            # Buscamos el texto o indicadores de stock, por ejemplo, "sin stock" o un indicador específico
-            if "sin stock" in content.lower():
+            logging.info(f"Contenido recibido: {content[:1000]}...")  # Imprime los primeros 1000 caracteres para depuración
+
+            # Buscamos si hay "sin stock" o "agotado" u otros indicadores de no disponibilidad
+            if "sin stock" in content.lower() or "agotado" in content.lower():
                 return False
             else:
                 return True
@@ -58,7 +60,7 @@ def check_stock():
 
 # Función principal
 def main():
-    send_telegram_notification("✅ El checker ya esta en marcha loco, para que te fundas la tarjeta, prepara 6500euros.")
+    send_telegram_notification("✅ El script está operativo y verificando stock cada 10 minutos.")
     
     last_stock_check_time = 0
     last_telegram_message_time = 0
