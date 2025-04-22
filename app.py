@@ -3,25 +3,43 @@ from bs4 import BeautifulSoup
 import logging
 import random
 import time
+from datetime import datetime
 
 # Configuración inicial
 PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
 TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
 TELEGRAM_CHAT_ID = "871212552"
-CHECK_INTERVAL = 600  # Comprobación de stock cada 10 minutos (600 seg)
-STATUS_NOTIFICATION_INTERVAL = 1800  # Reporte de estado cada 30 minutos
+CHECK_INTERVAL = 600  # Cada 10 minutos
+SUMMARY_INTERVAL = 1800  # Resumen cada 30 minutos
 
 # ScrapeOps
 SCRAPEOPS_API_KEY = "24f71537-bc7e-4c74-a75b-76e910aa1ab5"
-PROXY_URL = f"http://scrapeops.country=us:{SCRAPEOPS_API_KEY}@residential-proxy.scrapeops.io:8181"
+PROXY = {
+    "http": f"http://scrapeops.country=us:{SCRAPEOPS_API_KEY}@residential-proxy.scrapeops.io:8181",
+    "https": f"http://scrapeops.country=us:{SCRAPEOPS_API_KEY}@residential-proxy.scrapeops.io:8181"
+}
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Historial de comprobaciones
-check_results = []
-last_status_notification = time.time()
+# Historial para resumen
+check_history = []
 
+# Obtener User-Agent aleatorio desde ScrapeOps
+def get_random_user_agent():
+    try:
+        response = requests.get(
+            url='https://headers.scrapeops.io/v1/browser-headers',
+            params={
+                'api_key': SCRAPEOPS_API_KEY,
+                'num_results': '1'
+            }
+        )
+        headers = response.json().get('result', [])
+        return headers[0]['User-Agent'] if headers else None
+    except Exception as e:
+        logging.error(f"Error al obtener User-Agent: {e}")
+        return None
 
 def send_telegram_notification(message):
     try:
@@ -29,125 +47,87 @@ def send_telegram_notification(message):
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
-            logging.info("📬 Notificación enviada a Telegram.")
+            logging.info("Notificación enviada a Telegram.")
         else:
-            logging.error(f"❌ Error al enviar notificación a Telegram: {response.text}")
+            logging.error(f"Error al enviar notificación: {response.text}")
     except Exception as e:
-        logging.error(f"❌ Error al enviar notificación a Telegram: {e}")
+        logging.error(f"Error al enviar notificación a Telegram: {e}")
 
+def fetch_page():
+    user_agent = get_random_user_agent()
+    headers = {'User-Agent': user_agent} if user_agent else {}
 
-def get_random_user_agent():
     try:
-        headers_api = "https://headers.scrapeops.io/v1/browser-headers"
-        response = requests.get(headers_api, params={
-            'api_key': SCRAPEOPS_API_KEY,
-            'num_results': 1
-        }, timeout=10)
+        response = requests.get(PRODUCT_URL, headers=headers, proxies=PROXY, timeout=20, verify=False)
         response.raise_for_status()
-        return response.json()['result'][0]['User-Agent']
+        return response.text, user_agent, "ScrapeOps Proxies"
     except Exception as e:
-        logging.warning(f"⚠️ No se pudo obtener User-Agent dinámico: {e}")
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-
-
-def fetch_with_proxy():
-    try:
-        headers = {'User-Agent': get_random_user_agent()}
-        proxies = {
-            "http": PROXY_URL,
-            "https": PROXY_URL
-        }
-        response = requests.get(PRODUCT_URL, proxies=proxies, headers=headers, timeout=20, verify=False)
-        response.raise_for_status()
-        logging.info("✅ Página obtenida correctamente con proxy directo.")
-        return response.content
-    except Exception as e:
-        logging.warning(f"⚠️ Fallo con proxy directo: {e}")
-        return None
-
-
-def fetch_with_scrapeops_api():
-    try:
-        response = requests.get(
-            url='https://proxy.scrapeops.io/v1/',
-            params={
-                'api_key': SCRAPEOPS_API_KEY,
-                'url': PRODUCT_URL,
-                'render_js': 'true',
-                'residential': 'true',
-                'country': 'us',
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-        logging.info("✅ Página obtenida correctamente con ScrapeOps API.")
-        return response.content
-    except requests.exceptions.RequestException as e:
-        logging.error(f"❌ Error con ScrapeOps API: {e}")
-        return None
-
+        logging.error(f"Error al obtener página usando proxies: {e}")
+        send_telegram_notification(f"❌ Error al obtener página:\n{e}")
+        return None, user_agent, "ScrapeOps Proxies"
 
 def check_stock():
-    logging.info("🔍 Iniciando verificación de stock...")
-    page_content = fetch_with_proxy()
-    if not page_content:
-        page_content = fetch_with_scrapeops_api()
-    if not page_content:
-        logging.error("❌ No se pudo obtener la página con ninguno de los métodos.")
-        check_results.append("❌ Fallo en verificación")
-        return False
+    now = datetime.now().strftime('%H:%M:%S')
+    logging.info("🔄 Verificando stock...")
 
-    soup = BeautifulSoup(page_content, "html.parser")
-    size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
+    html, user_agent, metodo = fetch_page()
+    if html:
+        soup = BeautifulSoup(html, "html.parser")
+        size_selector = soup.find("ul", class_="vtmn-sku-selector__items")
 
-    if not size_selector:
-        message = "⚠️ Selector de tallas no encontrado."
-        logging.warning(message)
-        check_results.append("⚠️ Sin selector de tallas")
-        return False
+        if not size_selector:
+            message = f"🕒 [{now}]\n⚠️ No se encontró el selector de tallas.\n🔧 Método: {metodo}\n🧭 User-Agent: {user_agent}"
+            logging.warning("No se encontró el selector de tallas.")
+            send_telegram_notification(message)
+            check_history.append((now, "⚠️ Sin selector", metodo, user_agent))
+            return False
 
-    in_stock = any(
-        "sku-selector__stock--inStock" in str(item)
-        for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
-    )
+        in_stock = any(
+            "sku-selector__stock--inStock" in str(item)
+            for item in size_selector.find_all("li", class_="vtmn-sku-selector__item")
+        )
 
-    if in_stock:
-        message = "🎉 ¡STOCK DISPONIBLE! Corre a comprar 🛒"
-        logging.info(message)
-        send_telegram_notification(message)
-        check_results.append("✅ ¡STOCK DISPONIBLE!")
-        return True
+        if in_stock:
+            message = (
+                f"🕒 [{now}]\n🎉 ¡STOCK DISPONIBLE!\n🔗 {PRODUCT_URL}\n"
+                f"🔧 Método: {metodo}\n🧭 User-Agent: {user_agent}"
+            )
+            send_telegram_notification(message)
+            return True
+        else:
+            message = (
+                f"🕒 [{now}]\n📦 Resultado: SIN STOCK\n✅ Página cargada correctamente\n"
+                f"🔧 Método: {metodo}\n🧭 User-Agent: {user_agent}"
+            )
+            logging.info("Producto sin stock.")
+            check_history.append((now, "❌ SIN STOCK", metodo, user_agent))
+            return False
     else:
-        logging.info("❌ Producto sin stock.")
-        check_results.append("❌ Sin stock")
+        check_history.append((now, "❌ ERROR", metodo, user_agent))
         return False
 
-
-def send_status_summary():
-    global check_results
-    if check_results:
-        resumen = "📝 Resumen de las últimas verificaciones:\n"
-        for i, result in enumerate(check_results, 1):
-            resumen += f"{i}. {result}\n"
-        send_telegram_notification(resumen.strip())
-        check_results = []
-
+def send_summary():
+    message = "📊 Resumen de actividad (últimos 30 minutos)\n"
+    for check in check_history:
+        hora, resultado, metodo, ua = check
+        message += f"\n🕒 {hora} - {resultado}\n🔧 {metodo}\n🧭 {ua[:60]}..."
+    message += "\n\n📡 Script funcionando correctamente."
+    send_telegram_notification(message)
+    check_history.clear()
 
 def main():
-    global last_status_notification
-    logging.info("🚀 Script iniciado correctamente.")
-    send_telegram_notification("✅ Script iniciado y monitoreando stock cada 10 minutos.")
+    logging.info("✅ Script iniciado. Verificación cada 10 minutos.")
+    send_telegram_notification("✅ El script está operativo y verificando stock cada 10 minutos. Resumen cada 30 minutos.")
+
+    last_summary_time = time.time()
 
     while True:
-        result = check_stock()
-
-        current_time = time.time()
-        if current_time - last_status_notification > STATUS_NOTIFICATION_INTERVAL:
-            send_status_summary()
-            last_status_notification = current_time
-
+        if check_stock():
+            logging.info("¡Producto disponible! (notificado)")
+        if time.time() - last_summary_time >= SUMMARY_INTERVAL:
+            send_summary()
+            last_summary_time = time.time()
         time.sleep(CHECK_INTERVAL)
-
 
 if __name__ == "__main__":
     main()
