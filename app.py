@@ -46,17 +46,30 @@ def send_telegram_notification(message):
 def check_stock():
     headers = {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "es-ES,es;q=0.5",
-        "Referer": "https://www.decathlon.es/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.google.com/",
         "DNT": "1",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1"
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-User": "?1",
+        "sec-ch-ua": '"Chromium";v="120", "Not=A?Brand";v="8"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "TE": "trailers"
+    }
+
+    cookies = {
+        "CONSENT": "YES+cb.20210328-17-p0.es+FX+944",  # Simula consentimiento de cookies
     }
 
     try:
         logging.info(f"🔍 Verificando stock con proxy: {PROXY}")
-        response = requests.get(PRODUCT_URL, headers=headers, proxies=PROXIES, timeout=10)
+        response = requests.get(PRODUCT_URL, headers=headers, cookies=cookies, proxies=PROXIES, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
