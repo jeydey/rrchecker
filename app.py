@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = "871212552"
 STOCK_CHECK_INTERVAL = 600  # 10 minutos
 SUMMARY_INTERVAL = 1800  # 30 minutos
 
-SCRAPEOPS_API_KEY = "0deab795-ccc5-412e-9e5a-4d7319de05d5"
+SCRAPEOPS_API_KEY = "024be52e-c49b-4885-9320-1a9b0f14bf10"
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -54,24 +54,31 @@ def get_random_headers():
 
 def fetch_page_using_scrapeops():
     headers = get_random_headers()
-    try:
-        response = requests.get(
-            url='https://proxy.scrapeops.io/v1/',
-            params={
-                'api_key': SCRAPEOPS_API_KEY,
-                'url': PRODUCT_URL,
-                'render_js': 'true',
-                'residential': 'true',
-                'country': 'us',
-            },
-            headers=headers,
-            timeout=20
-        )
-        response.raise_for_status()
-        return response.content
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error al obtener página usando ScrapeOps: {e}")
-        return None
+    retries = 3  # Intentar hasta 3 veces
+    for attempt in range(retries):
+        try:
+            response = requests.get(
+                url='https://proxy.scrapeops.io/v1/',
+                params={
+                    'api_key': SCRAPEOPS_API_KEY,
+                    'url': PRODUCT_URL,
+                    'render_js': 'true',
+                    'residential': 'true',
+                    'country': 'es',
+                },
+                headers=headers,
+                timeout=40  # Timeout aumentado a 40 segundos
+            )
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error al obtener página usando ScrapeOps (Intento {attempt + 1}): {e}")
+            if attempt < retries - 1:
+                logging.info("Reintentando en 5 segundos...")
+                time.sleep(5)  # Esperar 5 segundos antes de reintentar
+            else:
+                logging.error("Se alcanzó el máximo de intentos. No se pudo obtener la página.")
+                return None
 
 def check_stock():
     logging.info("🔍 Verificando stock...")
