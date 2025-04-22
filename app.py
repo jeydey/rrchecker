@@ -114,20 +114,21 @@ def main():
     while True:
         now = time.time()
 
-        # Mensaje de funcionamiento cada 5 min
+        # Mensaje de funcionamiento cada 5 minutos
         if now - last_heartbeat >= HEARTBEAT_INTERVAL:
             send_telegram_notification("💤 Script funcionando. Sin novedades.")
             last_heartbeat = now
 
-        # Comprobar stock
-        result = check_stock()
-        if result is True:
-            last_stock_notification = now  # Si hay stock, reiniciamos contador
-        elif result is False and now - last_stock_notification >= STOCK_NOTIFICATION_INTERVAL:
-            send_telegram_notification("❌ Producto aún sin stock.")
-            last_stock_notification = now
+        # Comprobar stock cada 10 minutos
+        if now - last_stock_notification >= CHECK_INTERVAL:
+            result = check_stock()
+            if result is False and now - last_stock_notification >= STOCK_NOTIFICATION_INTERVAL:
+                send_telegram_notification("❌ Producto aún sin stock.")
+                last_stock_notification = now
+            elif result is True:
+                last_stock_notification = now  # Si hay stock, reiniciamos contador
 
-        time.sleep(CHECK_INTERVAL)
+        time.sleep(60)  # Verificación cada minuto
 
 if __name__ == "__main__":
     main()
