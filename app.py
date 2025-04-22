@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = "871212552"
 STOCK_CHECK_INTERVAL = 600  # 10 minutos
 SUMMARY_INTERVAL = 1800  # 30 minutos
 
-SCRAPEOPS_API_KEY = "24f71537-bc7e-4c74-a75b-76e910aa1ab5"
+SCRAPEOPS_API_KEY = "0deab795-ccc5-412e-9e5a-4d7319de05d5"
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
