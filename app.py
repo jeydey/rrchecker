@@ -3,39 +3,42 @@ from bs4 import BeautifulSoup
 import logging
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 # Configuración
 PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
-TELEGRAM_BOT_TOKEN = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"
+TELEGRAM_BOT_TOKEN_STOCK = "7930591359:AAG9UjjmyAcy7xGGzOyIHAqEgTUlAOZqj1w"  # Solo para alertas de stock
+TELEGRAM_BOT_TOKEN_LOG = "7511516134:AAGtxLvOsmkiKMQZaSm8gCvgiG18G3LbUoY"  # Para logs de cada comprobación
 TELEGRAM_CHAT_ID = "871212552"
 SCRAPEOPS_API_KEYS = [
-    "98771a3f-7adf-4924-b244-40760e65ea02",
-    "bb8e9114-f295-42cb-ae54-71b59305f97d"
+    "9ee3fbae-68a9-47bb-bace-b9554aa60283",
+    "7428a0f4-045c-43f1-aa82-ae7645450a42",
+    "5cedec06-1fa0-4e5c-bcef-86dcdde70215",
+    "d71f6eaf-4334-4b0f-901d-e91f1ee1ae47",
+    "8ea480b3-a876-4806-b7bb-8fc9a8cf617b",
+    "d061d795-4922-4b04-ae38-be3928e7fe40",
+    "ae5e53a2-899a-494d-9f2d-5f220366df63",
+    "5becc9ae-66f1-456d-9bd1-ae8feda6fe27"
 ]
 
 # Tiempos base
-STOCK_CHECK_INTERVAL_NORMAL = 600  # 10 minutos
-STOCK_CHECK_INTERVAL_HIGH = 300    # 5 minutos
-SUMMARY_INTERVAL = 1800  # 30 minutos
+STOCK_CHECK_INTERVAL_NORMAL = 300  # 5 minutos
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Almacenar comprobaciones
-stock_checks = []
-last_summary_time = time.time()
-check_count = 0
-
 # Zona horaria Madrid
 madrid_tz = ZoneInfo("Europe/Madrid")
 
+check_count = 0
 
-def send_telegram_notification(message):
+def send_telegram_notification(message, stock_alert=False):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+        token = TELEGRAM_BOT_TOKEN_STOCK if stock_alert else TELEGRAM_BOT_TOKEN_LOG
+        prefix = "📦 STOCK |" if stock_alert else "📄 LOG |"
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": f"{prefix} {message}"}
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             logging.info("📤 Notificación enviada a Telegram.")
@@ -44,13 +47,18 @@ def send_telegram_notification(message):
     except Exception as e:
         logging.error(f"Excepción al enviar notificación a Telegram: {e}")
 
+def send_reinforced_stock_alert(message):
+    alert_message = f"🚨🚨🚨 *ALERTA DE STOCK* 🚨🚨🚨\n{message}"
+    for _ in range(3):
+        send_telegram_notification(alert_message, stock_alert=True)
+        time.sleep(1)
 
 def get_random_headers():
     try:
         response = requests.get(
             url='https://headers.scrapeops.io/v1/browser-headers',
             params={
-                'api_key': SCRAPEOPS_API_KEYS[0],  # Solo necesitamos headers aquí
+                'api_key': SCRAPEOPS_API_KEYS[0],
                 'num_results': 5
             },
             timeout=10
@@ -62,7 +70,6 @@ def get_random_headers():
     except Exception as e:
         logging.error(f"Error al obtener headers de ScrapeOps: {e}")
     return {"User-Agent": "Mozilla/5.0"}
-
 
 def fetch_page_using_scrapeops():
     global check_count
@@ -91,7 +98,6 @@ def fetch_page_using_scrapeops():
 
     return None, api_key
 
-
 def check_stock():
     global check_count
     logging.info("🔍 Verificando stock...")
@@ -106,7 +112,8 @@ def check_stock():
         if not size_selector:
             msg = f"⚠️ [{timestamp}] No se encontró el selector de tallas. (API: {api_used})"
             logging.warning(msg)
-            return (timestamp, "⚠️ Error al analizar HTML", api_used)
+            send_telegram_notification(msg)
+            return
 
         in_stock = any(
             "sku-selector__stock--inStock" in str(item)
@@ -116,61 +123,22 @@ def check_stock():
         if in_stock:
             msg = f"🎉 ¡[{timestamp}] Producto disponible! (API: {api_used})"
             logging.info(msg)
-            send_telegram_notification(msg)
-            return (timestamp, "✅ CON STOCK", api_used)
+            send_reinforced_stock_alert(msg)
         else:
-            logging.info(f"❌ [{timestamp}] Producto sin stock. (API: {api_used})")
-            return (timestamp, "❌ Sin stock", api_used)
-
-    return (timestamp, "⚠️ Error al obtener página", api_used)
-
-
-def send_summary():
-    if not stock_checks:
-        return
-    summary_lines = ["📝 *Resumen de comprobaciones* (últimos 30 min):"]
-    for time_checked, result, api in stock_checks:
-        summary_lines.append(f"- {time_checked}: {result} (API: {api})")
-
-    summary_message = "\n".join(summary_lines)
-    send_telegram_notification(summary_message)
-    stock_checks.clear()
-
+            msg = f"❌ [{timestamp}] Producto sin stock. (API: {api_used})"
+            logging.info(msg)
+            send_telegram_notification(msg)
+    else:
+        msg = f"⚠️ [{timestamp}] Error al obtener página (API: {api_used})"
+        send_telegram_notification(msg)
 
 def main():
-    global last_summary_time
-    send_telegram_notification("✅ El script ha iniciado correctamente.")
-    
-    vigilant_mode = False
-    vigilant_check_done = False
+    send_telegram_notification("✅ El script ha iniciado correctamente.", stock_alert=True)
+    send_telegram_notification("🟢 Script activo y realizando comprobaciones de stock.", stock_alert=False)
 
     while True:
-        now = datetime.now(madrid_tz)
-        today = now.date()
-        is_april_24 = today == datetime(2025, 4, 24, tzinfo=madrid_tz).date()
-
-        # Activar vigilancia especial a partir del 24 a las 00:00 (hora Madrid)
-        if is_april_24 and now.hour == 0 and now.minute == 0 and not vigilant_check_done:
-            send_telegram_notification("📆 Es 24 de abril en Madrid.\n✅ Se ha hecho una comprobación inmediata.\n⏱️ Se activa vigilancia intensiva (cada 5 minutos).")
-            check_result = check_stock()
-            if check_result:
-                stock_checks.append(check_result)
-            vigilant_mode = True
-            vigilant_check_done = True
-
-        interval = STOCK_CHECK_INTERVAL_HIGH if vigilant_mode else STOCK_CHECK_INTERVAL_NORMAL
-
-        check_result = check_stock()
-        if check_result:
-            stock_checks.append(check_result)
-
-        now_unix = time.time()
-        if now_unix - last_summary_time >= SUMMARY_INTERVAL:
-            send_summary()
-            last_summary_time = now_unix
-
-        time.sleep(interval)
-
+        check_stock()
+        time.sleep(STOCK_CHECK_INTERVAL_NORMAL)
 
 if __name__ == "__main__":
     main()
