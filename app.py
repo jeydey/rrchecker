@@ -4,7 +4,7 @@ import logging
 import random
 import time
 from datetime import datetime, timedelta
-import pytz
+from zoneinfo import ZoneInfo
 
 # Configuración
 PRODUCT_URL = "https://www.decathlon.es/es/p/bicicleta-mtb-xc-race-940-s-ltd-azul-cuadro-carbono-suspension-total/_/R-p-361277?mc=8929013"
@@ -29,7 +29,7 @@ last_summary_time = time.time()
 check_count = 0
 
 # Zona horaria Madrid
-madrid_tz = pytz.timezone("Europe/Madrid")
+madrid_tz = ZoneInfo("Europe/Madrid")
 
 
 def send_telegram_notification(message):
