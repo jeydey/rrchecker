@@ -49,7 +49,7 @@ def send_telegram_notification(message, stock_alert=False):
 
 def send_reinforced_stock_alert(message):
     alert_message = f"🚨🚨🚨 *ALERTA DE STOCK* 🚨🚨🚨\n{message}"
-    end_time = time.time() + 60  # 1 minuto
+    end_time = time.time() + 300  # 5 minutos
     while time.time() < end_time:
         send_telegram_notification(alert_message, stock_alert=True)
         time.sleep(5)
