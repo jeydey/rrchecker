@@ -49,9 +49,10 @@ def send_telegram_notification(message, stock_alert=False):
 
 def send_reinforced_stock_alert(message):
     alert_message = f"🚨🚨🚨 *ALERTA DE STOCK* 🚨🚨🚨\n{message}"
-    for _ in range(3):
+    end_time = time.time() + 60  # 1 minuto
+    while time.time() < end_time:
         send_telegram_notification(alert_message, stock_alert=True)
-        time.sleep(1)
+        time.sleep(5)
 
 def get_random_headers():
     try:
