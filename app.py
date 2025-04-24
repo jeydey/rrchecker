@@ -23,7 +23,8 @@ SCRAPEOPS_API_KEYS = [
 ]
 
 # Tiempos base
-STOCK_CHECK_INTERVAL_NORMAL = 300  # 5 minutos
+STOCK_CHECK_INTERVAL_NORMAL = 1800  # 30 minutos
+STOCK_SUMMARY_INTERVAL = 3600  # 1 hora para resumen de stock
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -32,6 +33,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 madrid_tz = ZoneInfo("Europe/Madrid")
 
 check_count = 0
+last_stock_status = None
+last_summary_time = time.time()
 
 def send_telegram_notification(message, stock_alert=False):
     try:
@@ -46,13 +49,6 @@ def send_telegram_notification(message, stock_alert=False):
             logging.error(f"Error al enviar notificación a Telegram: {response.text}")
     except Exception as e:
         logging.error(f"Excepción al enviar notificación a Telegram: {e}")
-
-def send_reinforced_stock_alert(message):
-    alert_message = f"🚨🚨🚨 *ALERTA DE STOCK* 🚨🚨🚨\n{message}"
-    end_time = time.time() + 300  # 5 minutos
-    while time.time() < end_time:
-        send_telegram_notification(alert_message, stock_alert=True)
-        time.sleep(5)
 
 def get_random_headers():
     try:
@@ -100,7 +96,7 @@ def fetch_page_using_scrapeops():
     return None, api_key
 
 def check_stock():
-    global check_count
+    global check_count, last_stock_status, last_summary_time
     logging.info("🔍 Verificando stock...")
     page_content, api_used = fetch_page_using_scrapeops()
     timestamp = datetime.now(madrid_tz).strftime("%H:%M:%S")
@@ -113,7 +109,6 @@ def check_stock():
         if not size_selector:
             msg = f"⚠️ [{timestamp}] No se encontró el selector de tallas. (API: {api_used})"
             logging.warning(msg)
-            send_telegram_notification(msg)
             return
 
         in_stock = any(
@@ -124,18 +119,18 @@ def check_stock():
         if in_stock:
             msg = f"🎉 ¡[{timestamp}] Producto disponible! (API: {api_used})"
             logging.info(msg)
-            send_reinforced_stock_alert(msg)
+            send_telegram_notification(msg, stock_alert=True)
+            last_stock_status = True
         else:
-            msg = f"❌ [{timestamp}] Producto sin stock. (API: {api_used})"
-            logging.info(msg)
-            send_telegram_notification(msg)
-    else:
-        msg = f"⚠️ [{timestamp}] Error al obtener página (API: {api_used})"
-        send_telegram_notification(msg)
+            last_stock_status = False
+
+    if time.time() - last_summary_time >= STOCK_SUMMARY_INTERVAL:
+        summary_msg = f"⏱️ [{timestamp}] Estado actual: {'Disponible' if last_stock_status else 'Sin stock'} (API: {api_used})"
+        send_telegram_notification(summary_msg, stock_alert=True)
+        last_summary_time = time.time()
 
 def main():
     send_telegram_notification("✅ El script ha iniciado correctamente.", stock_alert=True)
-    send_telegram_notification("🟢 Script activo y realizando comprobaciones de stock.", stock_alert=False)
 
     while True:
         check_stock()
